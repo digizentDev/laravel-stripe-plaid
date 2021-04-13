@@ -35,7 +35,7 @@ return [
     |
     | The environment on which the API host will be set up, the accepted values
     | are: sandbox, development and production.
-    | https://plaid.com/docs/#api-host
+    | https://plaid.com/docs/api/#api-host
     |
     */
     'environment' => env('PLAID_ENVIRONMENT', ''),
@@ -48,7 +48,7 @@ return [
     | Private API key, here you need to add the respective secret key based on
     | the environment that is set up. This value can be found on your Plaid
     | account under the keys section.
-    | https://plaid.com/docs/#glossary
+    | https://plaid.com/docs/api/tokens/#token-endpoints
     |
     */
     'secret' => env('PLAID_SECRET', ''),
@@ -61,10 +61,65 @@ return [
     | The client id is an identifier for the Plaid account and can be found
     | on your Plaid account under the keys section. This value is always
     | the same, doesn't change based on environment.
-    | https://plaid.com/docs/#glossary
+    | https://plaid.com/docs/api/tokens/#token-endpoints
     |
     */
-    'client_id' => env('PLAID_CLIENT_ID', '')
+    'client_id' => env('PLAID_CLIENT_ID', ''),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Client Name
+    |--------------------------------------------------------------------------
+    |
+    | The name of your application, as it should be displayed in Link.
+    | https://plaid.com/docs/api/tokens/#token-endpoints
+    |
+    */
+    'client_name' => env('PLAID_CLIENT_NAME', ''),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Language
+    |--------------------------------------------------------------------------
+    |
+    | The language that Link should be displayed in.
+    | When using a Link customization, the language configured here must match the setting
+    | in the customization, or the customization will not be applied.
+    | Supported languages are: English ('en'), French ('fr'), Spanish ('es'), Dutch ('nl')
+    | https://plaid.com/docs/api/tokens/#token-endpoints
+    |
+    */
+    'language' => 'en',
+
+    /*
+    |--------------------------------------------------------------------------
+    | Country Codes
+    |--------------------------------------------------------------------------
+    |
+    | Specify an array of Plaid-supported country codes using the ISO-3166-1 alpha-2 country code standard.
+    | Note that if you initialize with a European country code, your users will see the European consent panel
+    | during the Link flow.
+    | If Link is launched with multiple country codes, only products that you are enabled for in all countries will be used by Link.
+    | Supported country codes are: US, CA, ES, FR, GB, IE, NL. Example value: ['US', 'CA'].
+    | https://plaid.com/docs/api/tokens/#token-endpoints
+    |
+    */
+    'country_codes' => ['US'],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Products
+    |--------------------------------------------------------------------------
+    |
+    | List of Plaid product(s) you wish to use. If launching Link in update mode,
+    | should be omitted; required otherwise
+    | Supported products are: transactions, auth, identity, assets, investments, liabilities, payment_initiation.
+    | Example value: ['auth', 'transactions']
+    | https://plaid.com/docs/api/tokens/#token-endpoints
+    |
+    */
+    'products' => ['auth', 'transactions'],
+
 ];
 ```
 
@@ -76,14 +131,26 @@ First, add the Plaid keys and environment to the `config/stripe-plaid.php` file 
 PLAID_ENVIRONMENT=sandbox
 PLAID_SECRET=your_plaid_secret_key
 PLAID_CLIENT_ID=your_plaid_client_id
+PLAID_CLIENT_NAME=your_app_name
 ```
+Then, you need to create the `link_token` which is required as a parameter when initializing Link. Once Link has been initialized, it returns a `public_token`.
 
-Now exchange the `public_token` and `account_id` that are returned by [Plaid Link](https://plaid.com/docs/stripe/#step3).
+To create the public token use `createLinkToken`, this function needs the `$clientUserId` (you can find more information [here](https://plaid.com/docs/api/tokens/#token-endpoints)), optionally this fuction accepts `$clientName, $products, $language, $countryCodes` if you don't provide these values the values on `config/stripe-plaid.php` config file will be used.
 
 ```php
 use AlexVargash\LaravelStripePlaid\StripePlaid;
 
-$accountId = 'plaid_link_account_id';
+$clientUserId = 'client_user_id';
+
+$stripePlaid = new StripePlaid();
+$linkToken   = $stripePlaid->createLinkToken($clientUserId);
+```
+Now you can use the value of `$linkToken` on [Link Web](https://plaid.com/docs/link/link-token-migration-guide/) to get the `public_token` and `account_id` values.
+
+```php
+use AlexVargash\LaravelStripePlaid\StripePlaid;
+
+$accountId   = 'plaid_link_account_id';
 $publicToken = 'plaid_link_public_token';
 
 $stripePlaid = new StripePlaid();
@@ -92,12 +159,20 @@ $stripeToken = $stripePlaid->getStripeToken($publicToken, $accountId);
 
 After that you can process the payment with the `$stripeToken` as you do with a Stripe Elements token.
 
-The exchange can be done with a Facade too.
+The link creation and the exchange can be done with a Facade too.
 
 ```php
 use AlexVargash\LaravelStripePlaid\Facades\StripePlaid;
 
-$accountId = 'plaid_link_account_id';
+$clientUserId = 'your_end_user_id';
+
+$linkToken    = StripePlaid::createLinkToken($clientUserId);
+```
+
+```php
+use AlexVargash\LaravelStripePlaid\Facades\StripePlaid;
+
+$accountId   = 'plaid_link_account_id';
 $publicToken = 'plaid_link_public_token';
 
 $stripeToken = StripePlaid::getStripeToken($publicToken, $accountId);
@@ -108,10 +183,10 @@ Alternatively the Plaid keys can be set prior token exchange, this is handy when
 ```php
 use AlexVargash\LaravelStripePlaid\StripePlaid;
 
-$secret = 'your_plaid_secret_key';
-$clientId = 'your_plaid_client_id';
+$secret      = 'your_plaid_secret_key';
+$clientId    = 'your_plaid_client_id';
 $environment = 'sandbox';
-$accountId = 'plaid_link_account_id';
+$accountId   = 'plaid_link_account_id';
 $publicToken = 'plaid_link_public_token';
 
 $stripeToken = StripePlaid::make($secret, $clientId, $environment)->getStripeToken($publicToken, $accountId);
@@ -136,6 +211,9 @@ public function render($request, Exception $exception)
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
 Please make sure to update tests as appropriate.
+
+## Contributors
+[<img src="https://pbs.twimg.com/profile_images/950767267033133057/4DNt-mOz_400x400.jpg" alt="Rogelio Bazan" width="50" height="50" />](https://twitter.com/rogeliobazh)
 
 ## License
 [MIT](./LICENSE.md)
